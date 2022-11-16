@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.4.4 < 0.7.0;
+pragma solidity >=0.4.4 <0.7.0;
 pragma experimental ABIEncoderV2;
 import "./SafeMath.sol";
+
+// Richard --> 0x5B38Da6a701c568545dCfcB03FcB875f56beddC4
+// Alex --> 0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2
+// Alexa --> 0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db
+
+
+
+
 
 // Interface de nuestro token ERC20
 // Métodos accesibles desde el exterior
@@ -44,8 +52,9 @@ contract ERC20Basic is IERC20{
     string public constant symbol = "PC";
     uint8 public constant decimals = 18;
 
-
+    // Evento que se debe emitir cuando una cantidad de tokens pase de un origen a un destino
     event Transfer(address indexed from, address indexed to, uint256 tokens);
+    // Evento que se debe emitir cuando se establece una asignación con el método allowance()
     event Approval(address indexed owner, address indexed spender, uint256 tokens);
 
     // Todas las operaciones con enteros pasan por la librería para evitar el overflow
@@ -118,16 +127,50 @@ contract ERC20Basic is IERC20{
     // Primero debemos asegurar que como emisor dispongo de esos tokens
     function transfer(address recipient, uint256 numTokens) public override returns (bool){
         require(numTokens <= balances[msg.sender]);
-
-        return false;
+        // Ahora restamos los tokens que voy a enviar de mi balance
+        // con sub de la librería safemath
+        balances[msg.sender] = balances[msg.sender].sub(numTokens);
+        // Le sumamos al receptor, también con un método de la librería
+        balances[recipient] = balances[recipient].add(numTokens);
+        // Ahora se hace un broadcast para notificar la transacción
+        emit Transfer(msg.sender, recipient, numTokens);
+        return true;
     }
 
-    function approve(address spender, uint256 amount) public override returns (bool){
-        return false;
+
+    // Permitir que otro utilice una cierta cantidad de tokens en nuestro nombre
+    function approve(address delegate, uint256 numTokens) public override returns (bool){
+        // En este caso se utiliza el mapping del allowance para que ese delegado
+        // disponga de cierta cantidad y notificarlo a todo el mundo a través del 
+        // evento Approval de que el propietario aceptó que cierta persona haga uso de 
+        // un número determinado de tokens 
+        allowed[msg.sender][delegate] = numTokens;
+        // Tengamos en cuenta que no hay una transferencia
+        // Es sólo un evento de aprobación
+        emit Approval(msg.sender, delegate, numTokens);
+        // Si llegamos hasta aquí hubo aprobación, entonces devolvemos true
+        return true;
     }
 
-    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool){
-        return false;
+
+    // Transferir del propietario al comprador
+    function transferFrom(address owner, address buyer, uint256 numTokens) public override returns (bool){
+        // Primero  aseguramos que el owner tiene esa cantidad para vender
+        require(numTokens <= balances[owner]);
+        // Nosotros hacemos como delegados de la venta entre owner y buyer
+        // es por eso que necesitamos un segundo require
+        // El owner nos autoriza a hacer uso de esa cantidad para efectuar la venta
+        require(numTokens <= allowed[owner][msg.sender]);
+        // Ahora hacemos las tres modificaciones en cuestion
+        // Le quitamos al owner esa cantidad
+        balances[owner] = balances[owner].sub(numTokens);
+        // Me los quito a mí como amo y poseedor de ellos
+        allowed[owner][msg.sender] = allowed[owner][msg.sender].sub(numTokens);
+        // Ahora podemos sumarle la cantidad al comprador
+        balances[buyer] = balances[buyer].add(numTokens);
+        // Notificacion del evento de transferencia
+        emit Transfer(owner, buyer, numTokens);
+        return true;
     }
 
 }
